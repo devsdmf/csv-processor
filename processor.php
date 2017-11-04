@@ -19,6 +19,11 @@ if ($pid == -1) {
     posix_setsid();
     posix_setuid(PROCESS_UID);
     posix_setgid(PROCESS_GID);
+
+    // closing descriptors
+    fclose(STDIN);
+    fclose(STDOUT);
+    fclose(STDERR);
 }
 
 // getting child pid 
