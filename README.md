@@ -108,7 +108,7 @@ $ ps aux | grep csvd.php
 
 To check if there is any processor running, use the following command:
 
-``
+```
 $ ps aux | grep processor.php
 ```
 
@@ -121,7 +121,9 @@ INSERT INTO `queue` (`file`,`status`,`created_at`) VALUES ('sample.csv','pending
 ```
 
 (1) - Make sure that the daemon is running using the command above
+
 (2) - You can check the status of the process directly in the status column in the database
+
 (3) - You can download a [sample.csv]() file in the following link
 
 ## Credit
