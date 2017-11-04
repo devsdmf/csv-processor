@@ -1,8 +1,12 @@
 <?php
 
+// requiring the configurations file
+require_once('config.php');
+
 // checking if the queue id was provided
 if (!isset($argv[1])) die('You must pass the queue id as argument to the script');
 
+// forking the process to run in background
 $pid = pcntl_fork();
 
 if ($pid == -1) {
@@ -10,12 +14,11 @@ if ($pid == -1) {
 } else if ($pid) {
     pcntl_wait($status, WNOHANG);
     exit(0);
-    
 } else {
     // here start the child
     posix_setsid();
-    posix_setuid(501);
-    posix_setgid(20);
+    posix_setuid(PROCESS_UID);
+    posix_setgid(PROCESS_GID);
 }
 
 // getting child pid 
@@ -28,7 +31,7 @@ define('DATA_DIR',realpath(__DIR__ . '/data'));
 $queueId = intval($argv[1]);
 
 // initializing the database connection
-$db = new PDO('mysql:host=localhost;dbname=csv_processor','root',null);
+$db = new PDO('mysql:host=' . DB_HOST . ';dbname=' . DB_NAME,DB_USER,DB_PASS,[PDO::ATTR_PERSISTENT => true]);
 
 // getting the queued process from the database
 $stmt = $db->query("SELECT * FROM `queue` WHERE `id`=$queueId");
@@ -38,7 +41,7 @@ $process = $stmt->fetch(PDO::FETCH_ASSOC);
 if (!$process) die('The specified queue id was not found');
 
 $stmt = $db->prepare('UPDATE `queue` SET `status`=?,`pid`=? WHERE `id`=?');
-$stmt->execute(['running',$pid,$process['id']]);
+$stmt->execute([STATUS_RUNNING,$pid,$process['id']]);
 
 // opening the file
 $handler = fopen(DATA_DIR . '/' . $process['file'],'r');
@@ -57,4 +60,8 @@ while (!feof($handler)) {
 
 // updating the status
 $stmt = $db->prepare('UPDATE `queue` SET `status`=?,`finished_at`=NOW() WHERE `id`=?');
-$stmt->execute(['finished',$process['id']]);
+$stmt->execute([STATUS_FINISHED,$process['id']]);
+
+// realeasing resources
+unset($stmt);
+unset($db);

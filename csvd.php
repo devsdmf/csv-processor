@@ -1,44 +1,44 @@
 <?php
 
-// setting up constants and configurations
-define('DATA_DIR',realpath(__DIR__ . '/data'));
-define('PROCESSOR',realpath(__DIR__) . '/processor.php');
-define('ENABLE_CHUNK',true);
-define('CHUNK_MAX_LINES',100000);
+// requiring the configurations file
+require_once('config.php');
 
 // the signal handler
-function sig_handler($signo) {
-    echo "caugh a signal $signo" . PHP_EOL;
+function sig_terminate($signo) {
+    global $db, $stmt;
+    unset($stmt);
+    unset($db);
 }
 
 // setting up signals
-pcntl_signal(SIGTERM, 'sig_handler');
-pcntl_signal(SIGINT, 'sig_handler');
+pcntl_signal(SIGTERM, 'sig_terminate');
+pcntl_signal(SIGINT, 'sig_terminate');
 
 // forking to child
 $pid = pcntl_fork();
 
 if ($pid == -1) {
-    die('could not fork');
+    die('An error occurred at try to fork the process to a child');
 } else if ($pid) {
+    // waiting for the child initializing
     pcntl_wait($status, WNOHANG);
     exit(0);
 } else {
     // here start the child
     posix_setsid();
-    posix_setuid(501);
-    posix_setgid(20);
+    posix_setuid(PROCESS_UID);
+    posix_setgid(PROCESS_GID);
 }
 
 // getting the child pid
 $pid = posix_getpid();
 
 // getting the database connection
-$db = new PDO('mysql:host=localhost;dbname=csv_processor','root',null);
+$db = new PDO('mysql:host=' . DB_HOST . ';dbname=' . DB_NAME,DB_USER,DB_PASS,[PDO::ATTR_PERSISTENT => true]);
 
 while (true) {
     // fetching pending process from the queue
-    $stmt = $db->query("SELECT * FROM `queue` WHERE `status`='pending'");
+    $stmt = $db->query("SELECT * FROM `queue` WHERE `status`='" . STATUS_PENDING . "'");
     $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     // files to be processed in queue
@@ -47,10 +47,10 @@ while (true) {
 
     // looping into results
     foreach($data as $row) {
-        if (ENABLE_CHUNK) {
+        if (ENABLE_FILE_CHUNKS) {
             // checking the number of lines in file
             preg_match('/[0-9]+/', exec('wc -l ' . DATA_DIR . '/' . $row['file']), $result);
-            if (intval($result[0]) > CHUNK_MAX_LINES) {
+            if (intval($result[0]) > MAX_LINES_PER_CHUNK) {
                 // generating a prefix to prepend the new generated files
                 $prefix = uniqid();
 
@@ -64,7 +64,7 @@ while (true) {
                 // creating the new process in the queue
                 foreach (glob($prefix . '*.csv') as $file) {
                     $stmt = $db->prepare('INSERT INTO `queue` (`parent`,`file`,`status`,`created_at`) VALUES (?,?,?,NOW())');
-                    $stmt->execute([$row['id'],$file,'queued']);
+                    $stmt->execute([$row['id'],$file,STATUS_QUEUED]);
 
                     // adding next process to be initiated
                     $queue->push($db->lastInsertId());
@@ -72,14 +72,14 @@ while (true) {
 
                 // updating the status of the main queue to chunked
                 $stmt = $db->prepare('UPDATE `queue` SET `status`=? WHERE `id`=?');
-                $stmt->execute(['chunked',$row['id']]);
+                $stmt->execute([STATUS_CHUNKED,$row['id']]);
             } else {
                 // adding the process to be initiated
                 $queue->push($row['id']);
 
                 // updating the status to queued
                 $stmt = $db->prepare('UPDATE `queue` SET `status`=? WHERE `id`=?');
-                $stmt->execute(['queued',$row['id']]);
+                $stmt->execute([STATUS_QUEUED,$row['id']]);
             }
         } else {
             // adding the process to be initiated
@@ -87,7 +87,7 @@ while (true) {
 
             // updating the status to queued
             $stmt = $db->prepare('UPDATE `queue` SET `status`=? WHERE `id`=?');
-            $stmt->execute(['queued',$row['id']]);
+            $stmt->execute([STATUS_QUEUED,$row['id']]);
         }
     }
 
@@ -98,11 +98,11 @@ while (true) {
         $queueId = $queue->pop();
 
         // initializng the processor
-        exec("/usr/local/opt/php71/bin/php " . PROCESSOR . ' ' . $queueId . ' > /dev/null 2>&1');
+        exec(implode(' ',[PHP_BIN,PROCESSOR_SCRIPT,$queueId,' > /dev/null 2>&1']));
     }
 
     // checking for chunked process state
-    $stmt = $db->query("SELECT * FROM `queue` WHERE `status`='chunked'");
+    $stmt = $db->query("SELECT * FROM `queue` WHERE `status`='" . STATUS_CHUNKED ."'");
     $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     // looping into results
@@ -116,7 +116,7 @@ while (true) {
 
         // checking if all process has finished
         foreach ($subs as $sub) {
-            if ($sub['status'] === 'running') {
+            if ($sub['status'] === STATUS_RUNNING) {
                 $isRunning = true;
             }
         }
@@ -125,7 +125,7 @@ while (true) {
         if (!$isRunning) {
             // updating the parent process to finished when all processes finished
             $stmt = $db->prepare("UPDATE `queue` SET `status`=?,`finished_at`=NOW() WHERE `id`=?");
-            $stmt->execute(['finished',$row['id']]);
+            $stmt->execute([STATUS_FINISHED,$row['id']]);
         }
     }
     
