@@ -124,7 +124,7 @@ INSERT INTO `queue` (`file`,`status`,`created_at`) VALUES ('sample.csv','pending
 
 (2) - You can check the status of the process directly in the status column in the database
 
-(3) - You can download a [sample.csv]() file in the following link
+(3) - You can download a [sample.csv](http://bit.ly/csv-processor-sample) file in the following link
 
 ## Credit
 
