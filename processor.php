@@ -29,9 +29,6 @@ if ($pid == -1) {
 // getting child pid 
 $pid = posix_getpid();
 
-// setups the data directory
-define('DATA_DIR',realpath(__DIR__ . '/data'));
-
 // getting argument
 $queueId = intval($argv[1]);
 
@@ -60,7 +57,7 @@ while (!feof($handler)) {
     $stmt = $db->prepare('INSERT INTO `ceps` (`cep`,`street`,`neighborhood`,`city`,`state`) VALUES (?,?,?,?,?)');
 
     // inserting
-    $stmt->execute([$data[0],$data[1],$data[2],$data[3],$data[5]]);
+    $stmt->execute([$data[1],$data[2],$data[3],$data[4],$data[5]]);
 }
 
 // updating the status
