@@ -42,11 +42,36 @@ $process = $stmt->fetch(PDO::FETCH_ASSOC);
 // checking if the process exists
 if (!$process) die('The specified queue id was not found');
 
+// setting up custom error handler to nicely update the process status in the db
+set_error_handler(function ($errno, $errstr) use ($process, $db) {
+    $stmt = $db->prepare('UPDATE `queue` SET `status`=?, `pid`=? WHERE `id`=?');
+    $stmt->execute([STATUS_FAILED,null,$process['id']]);
+    $db->commit();
+
+    exit(1);
+});
+
+// updating the process status to running
 $stmt = $db->prepare('UPDATE `queue` SET `status`=?,`pid`=? WHERE `id`=?');
 $stmt->execute([STATUS_RUNNING,$pid,$process['id']]);
 
 // opening the file
 $handler = fopen(DATA_DIR . '/' . $process['file'],'r');
+
+// initializing the database transaction
+$db->beginTransaction();
+
+// registering signal handler to nicely stop the database transactions
+function sig_terminate($signo) {
+    global $db;
+    $db->rollBack();
+    unset($db);
+    exit(0);
+}
+
+// setting up signals
+pcntl_signal(SIGTERM, 'sig_terminate');
+pcntl_signal(SIGINT, 'sig_terminate');
 
 // iterating over the files
 while (!feof($handler)) {
@@ -59,6 +84,9 @@ while (!feof($handler)) {
     // inserting
     $stmt->execute([$data[1],$data[2],$data[3],$data[4],$data[5]]);
 }
+
+// commiting the transaction
+$db->commit();
 
 // updating the status
 $stmt = $db->prepare('UPDATE `queue` SET `status`=?,`finished_at`=NOW() WHERE `id`=?');

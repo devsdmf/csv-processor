@@ -3,11 +3,15 @@
 // requiring the configurations file
 require_once('config.php');
 
+// tick use required as of PHP 4.3.0
+declare(ticks = 1);
+
 // the signal handler
 function sig_terminate($signo) {
     global $db, $stmt;
     unset($stmt);
     unset($db);
+    exit(0);
 }
 
 // setting up signals
@@ -63,7 +67,7 @@ while (true) {
                 chdir(DATA_DIR);
 
                 // splitting the csv file into chunks
-                exec("split -l 100000 " . $row['file'] . ' ' . $prefix . '-');
+                exec("split -l " . MAX_LINES_PER_CHUNK . " " . $row['file'] . ' ' . $prefix . '-');
                 exec('for f in ' . $prefix . '*; do mv "$f" "$f.csv"; done');
 
                 // creating the new process in the queue
@@ -136,4 +140,3 @@ while (true) {
     
     sleep(10);
 }
-
